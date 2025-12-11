@@ -8,11 +8,11 @@ execute:
   message: false
 
 book:
-  title: "YOUR PROJECT TITLE"
+  title: "Socioeconomic Analysis in Peru"
   author:
-    - AUTHOR1 (UNI1)
-    - AUTHOR2 (UNI2)
-  repo-url: https://github.com/YOUR_GITHUB_ACCOUNT/REPO_NAME
+    - Lady Infante Acosta (ldi2101)
+    - Viviana Hanampa Castillo (vsh2108)
+  repo-url: https://github.com/LadyInfanteA/peru-socioeconomic-analysis
   date: today
   page-footer:
     right: |
