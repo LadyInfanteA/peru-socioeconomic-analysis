@@ -34,3 +34,99 @@ https://apeim.com.pe/wp-content/uploads/2024/01/APEIM-Informe-de-Niveles-Socioec
 
 
 ## Missing value analysis
+
+```{r}
+data <- read.csv('master_left.csv')
+```
+
+For treatment of missing values, please refer to the Readme. AS
+In this part, we worked with the data without any treatment.
+(To make my point, I'm choosing some columns; however, we have more than ~2189 columns
+to analyze, which we did in Python. However, I will show you how we should proceed here.
+
+First, we analyze the number of missing values per column. For this, there is this plot.
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+vars <- c(
+  "shock_business_failure",
+  "shock_job_loss",
+  "shock_none",
+  "shock_natural_disaster",
+  "shock_crime_theft",
+  "shock_household_head_abandonment",
+  "shock_illness_accident",
+  "bribery_last_12m",
+  "last_approved_grade",
+  "last_approved_year",
+  "last_approved_institution_type",
+  "water_access_daily",
+  "water_is_potable"
+)
+
+df_selected <- data |> select(any_of(vars))
+
+miss_long <- df_selected %>%
+  mutate(row_id = row_number()) %>%
+  mutate(across(-row_id, as.character)) %>%   # <- makes all columns same type
+  pivot_longer(
+    cols = -row_id,
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  mutate(missing = if_else(is.na(value), "yes", "no"))
+
+ggplot(miss_long, aes(x = variable, y = factor(row_id), fill = missing)) +
+  geom_raster(color = "grey85", linewidth = 0.15) +
+  scale_fill_manual(values = c("no" = "#2c105c", "yes" = "#fde725")) +
+  labs(title = "Missingness map (selected variables)",
+       x = "variable", y = "row", fill = "missing") +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+We analyzed the type of variables and the number of unique values, and we noticed an interesting pattern. The word 'pase' in Spanish is the same as 'pass' in English. We reviewed the manual instructions and found that 'pass' indicates a non-response in the census questionnaire. Then we replace every 'pass' with NA, and we have the following graph.
+
+```{r}
+df_selected <- df_selected %>%
+  mutate(across(
+    everything(),
+    ~ if_else(. %in% c("pase", "Pase"), NA, .)
+  ))
+
+miss_long <- df_selected %>%
+  mutate(row_id = row_number()) %>%
+  mutate(across(-row_id, as.character)) %>%   # <- makes all columns same type
+  pivot_longer(
+    cols = -row_id,
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  mutate(missing = if_else(is.na(value), "yes", "no"))
+
+
+ggplot(miss_long, aes(x = variable, y = factor(row_id), fill = missing)) +
+  geom_raster(color = "grey85", linewidth = 0.15) +
+  scale_fill_manual(values = c("no" = "#2c105c", "yes" = "#fde725")) +
+  labs(title = "Missingness map (selected variables)",
+       x = "variable", y = "row", fill = "missing") +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+As we can observe, now the columns that were supposed to be 100% without nulls have nulls. Additionally, some of them are in the same columns as the cases of 'shock_business_failure', 'shock_crime_theft', and ' shock_household_head_abandonment'.
+
+After this analysis, we replicated for all the columns in our base (more info in the read me file )
