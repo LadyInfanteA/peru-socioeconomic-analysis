@@ -886,9 +886,7 @@ df_data_sf_2 <- st_as_sf(focused_data, wkt = "geometry")
 
 centroids <- df_data_sf_2 |>
   group_by(district, district_type, district_avg_rent) |>
-  summarise(geometry = st_centroid(st_union(geometry))) |>
-  ungroup()
-
+  summarise(geometry = st_centroid(st_union(geometry)), .groups = "drop")
 
 ggplot(df_data_sf_2) +
 

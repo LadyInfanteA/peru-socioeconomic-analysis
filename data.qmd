@@ -80,7 +80,7 @@ miss_long <- df_selected %>%
   mutate(missing = if_else(is.na(value), "yes", "no"))
 
 ggplot(miss_long, aes(x = variable, y = factor(row_id), fill = missing)) +
-  geom_raster(color = "grey85", linewidth = 0.15) +
+  geom_raster() +
   scale_fill_manual(values = c("no" = "#2c105c", "yes" = "#fde725")) +
   labs(title = "Missingness map (selected variables)",
        x = "variable", y = "row", fill = "missing") +
@@ -114,7 +114,7 @@ miss_long <- df_selected %>%
 
 
 ggplot(miss_long, aes(x = variable, y = factor(row_id), fill = missing)) +
-  geom_raster(color = "grey85", linewidth = 0.15) +
+  geom_raster() +
   scale_fill_manual(values = c("no" = "#2c105c", "yes" = "#fde725")) +
   labs(title = "Missingness map (selected variables)",
        x = "variable", y = "row", fill = "missing") +
