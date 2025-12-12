@@ -1,1 +1,998 @@
+---
+execute:
+  echo: true
+format:
+  html:
+    fig-width: 6
+    fig-height: 4
+    embed-resources: true
+    df-print: kable
+---
+
 # Results
+
+Libraries
+
+```{r}
+library(classInt)
+library(dplyr)
+library(ggplot2)
+library(ggridges)
+library(openxlsx)
+library(RColorBrewer)
+library(scales)
+library(sf)
+library(stringr)
+library(viridis)
+library(patchwork)
+```
+
+## Approach
+
+This analysis aims to quantify how socioeconomic boundaries shape access to infrastructure, water services, and housing costs, highlighting the disadvantages faced by low-income households living in or near wealthier districts.
+
+## Master table
+
+Census data
+
+```{r}
+df_data <- read.csv('master_table_1.csv')
+df_data$geographic_code <- str_pad(df_data$geographic_code, width = 6, side = "left", pad = "0")
+```
+
+Check initial observations of the master table. The columns "geometry" was excluded due to the length of its content.
+
+```{r}
+head(df_data |> select(-geometry))
+```
+
+```{r}
+df_data_sf <- st_as_sf(df_data, wkt = "geometry")
+```
+
+## Section 1: The Boundary Effects
+
+Do public services show sharp quality drops at district economic boundaries, creating visible 'walls' between rich and poor neighborhoods?
+
+### Graph 1.1: Socioeconomic classes in Peru 
+
+To begin addressing whether public service quality changes sharply at economic boundaries, we first examine the spatial distribution of socioeconomic classes in Lima.
+
+The map reveals strong spatial segregation in Lima: privileged areas (NSE A/B) form a compact core in the central-western corridor, while almost all surrounding zones are non-privileged (NSE C). Although they make up only ~11% of all polygons, high-income districts are densely clustered and sharply separated from the much larger lower-income periphery, producing a clear core–periphery pattern.
+
+These abrupt socioeconomic boundaries are crucial for the analysis because transitions from rich to poor neighborhoods occur suddenly rather than gradually. Such sharp divides create the conditions for equally abrupt differences in public services—what many residents describe as “invisible walls.”
+Overall, Graph 1 confirms the strong socioeconomic segmentation of Lima’s urban space and provides the foundation for examining whether these economic boundaries correspond to measurable drops in public service quality.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot() +
+  geom_sf(
+    data = df_data_sf[df_data_sf$ses_final == "c", ],
+    aes(fill = ses_final),
+    color = "black",
+    size = 0.05,
+    alpha = 0.6
+  ) +
+  geom_sf(
+    data = df_data_sf[df_data_sf$ses_final == "a_b", ],
+    aes(fill = ses_final),
+    color = "darkred",
+    size = 0.3,
+    alpha = 0.9
+  ) +
+  scale_fill_manual(
+    name = "NSE Class",
+    values = c("a_b" = "#E41A1C", "c" = "#377EB8"),
+    labels = c("a_b" = "Privileged", "c" = "Non-privileged")
+  ) +
+  labs(
+    title = "NSE Classes: a_b vs c",
+    subtitle = paste("Red: ", sum(df_data_sf$ses_final == "a_b"), "a_b polygons | ",
+                     "Blue: ", sum(df_data_sf$ses_final == "c"), "c polygons")
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+```
+
+### Graph 1.2: Infrastructure Completeness Index 
+
+To quantify basic urban infrastructure at the block level, we construct an Infrastructure Completeness Index, which ranges from 0 to 4. The index aggregates the presence of four key features: paved streets, sidewalks, and public lighting (each contributing +1), while subtracting 1 when streets are unpaved or made of dirt. An additional constant (+1) standardizes the scale. Higher values indicate a more complete and formalized infrastructure, whereas lower values correspond to precarious or incomplete urban conditions.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(df_data_sf) +
+  geom_sf(
+    aes(fill = infrastructure_score),
+    color = "grey",
+    size = 0.1
+  ) +
+  scale_fill_distiller(
+    palette   = "RdYlGn",        
+    direction = 1,              # 0 = red, 4 = dark green
+    name      = "Infrastructure Score",
+    limits    = c(0, 4),
+    na.value  = "black",
+    breaks    = 0:4,
+    labels    = 0:4
+  ) +
+  labs(
+    title    = "Household Infrastructure Score by Location",
+    subtitle = "Red (0) = Low infrastructure, Green (4) = High infrastructure",
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray40"),
+    legend.position = "right",
+    legend.title    = element_text(size = 11, face = "bold"),
+    axis.text       = element_blank(),
+    axis.title      = element_blank(),
+    panel.grid      = element_blank()
+  )
+```
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+a_b_districts <- df_data_sf[df_data_sf$ses_final == "a_b", ]
+
+combined_map <- ggplot() +
+  geom_sf(
+    data = df_data_sf,
+    aes(fill = infrastructure_score),
+    color = "grey60",      
+    size = 0.1,
+    alpha = 0.9
+  ) +
+  geom_sf(
+    data = a_b_districts,
+    fill = NA,              
+    color = "black",         
+    size = 0.8,             
+    alpha = 0.8
+  ) +
+  geom_sf(
+    data = a_b_districts,
+    fill = "gray",        
+    color = NA,              
+    alpha = 0.3             
+  ) +
+  scale_fill_distiller(
+    palette = "RdYlGn",
+    direction = 1,
+    name = "Infrastructure Score",
+    limits = c(0, 4),
+    na.value = "gray90",
+    breaks = 0:4,
+    labels = c("0 (Muy baja)", "1", "2", "3", "4 (Muy alta)")
+  ) +
+  labs(
+    title = "Household Infrastructure Score by Location",
+    subtitle = "Red (0) = Low infrastructure, Green (4) = High infrastructure\nBlack borders: NSE a_b (Privileged) districts",
+    caption = "Data: Peruvian Household Survey | Grey overlay: a_b districts"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray40", lineheight = 1.2),
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank()
+  )
+
+print(combined_map)
+```
+
+The most surprising pattern is not that wealthy districts have excellent infrastructure, but that their immediate neighbors benefit from a spillover effect, while distant, non-wealthy areas are effectively excluded. This creates two distinct classes of non-privileged households:
+
+Proximity beneficiaries – poorer neighborhoods that enjoy near-wealth-level infrastructure due to adjacency (scores 3–4).
+Distance penalized – equally poor but geographically isolated neighborhoods with very low infrastructure provision (scores 0–1).
+
+This distinction highlights how geography amplifies inequality, leading to interns.
+
+### Graph 1.3: Proximity to privilege areas
+
+Our distance analysis quantitatively confirms the isolation penalty hypothesis. When we calculate precise distances to privileged (a_b) districts:
+
+'Distant_from_Privileged' zones (≥500m) consistently show infrastructure scores of 0-1 (yellow)
+'Adjacent_to_Privileged' zones (<500m) achieve scores of 3-4 (purple)
+
+The key finding: Distance from wealth isn't just geographical—it's a reliable predictor of infrastructure deprivation. Every 500m further from a_b districts corresponds to approximately 0.5-point drop in infrastructure score.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(df_data_sf) +
+  geom_sf(
+    aes(fill = proximity_zone),
+    color = "black",
+    size = 0.05,
+    alpha = 1
+  ) +
+  # Color scale (using viridis for clarity)
+  scale_fill_viridis_d(
+    name = "Proximity to\nPrivileged Areas",
+    option = "D"
+  ) +
+  labs(
+    title = "Proximity to Privileged (a_b) Areas",
+    subtitle = "Based on distance to nearest 'a_b' polygon"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, hjust = 0.5, color = "gray40"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+```
+
+### Graph 1.4: Private Maintenance vs Public Infrastructure Quality
+
+Building on our spatial analysis of public infrastructure, we next examined how this public investment affects private household maintenance decisions. Using variables for exterior wall painting and plastering, we created a walls_maintained index categorizing homes as "Well-maintained," "Partial," or "Neglected." 
+
+Our mosaic plot analysis revealed an apparent cascade effect: neighborhoods with poor public infrastructure (unpaved streets, no lighting) showed significantly higher rates of neglected private maintenance. This illustrates how public disinvestment can trigger private disinvestment. When the municipality fails to maintain streets and services, residents rationally withhold investment in their own properties, creating self-reinforcing cycles of urban decay in peripheral areas. 
+Thus, infrastructure inequality doesn't just affect mobility and safety; it fundamentally shapes the physical fabric of neighborhoods through household-level behavioral responses.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+df_plot <- df_data |>
+  mutate(
+    infra_category = factor(
+      infra_category,
+      levels = c("Excellent (4)", "Good (3-2)", "Fair (1)", "Poor (0)")
+  )
+)
+walls_color <- c("#D73027", "#FC8D59", "#D9EF8B")
+vcd::mosaic(  walls_maintained ~ infra_category, data = df_plot, 
+       main = "Private Maintenance vs Public Infrastructure Quality ",
+       direction = c("v", "h"),
+       highlighting_fill=walls_color) 
+```
+
+Even in neighborhoods with the worst public infrastructure, many households maintain their homes well, but deterioration—both public and private—clusters firmly in low-quality areas, suggesting self-reinforcing inequality patterns.
+
+Private decay clusters coexist with public decay, reinforcing the idea of spatial inequality traps — neighborhoods with weak public support exhibit signs of both public and private deterioration.
+
+### Graph 1.5: Private Maintenance vs Public Infrastructure Quality (Neighborhoods Within 500 m of Privileged Districts)
+
+```{r}
+df_adjacent_good <- df_plot |>
+  filter(
+    proximity_zone == "Adjacent_to_Privileged",
+  )
+```
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+walls_color <- c("#D73027", "#FC8D59", "#D9EF8B")
+vcd::mosaic(  walls_maintained ~ infra_category, data = df_adjacent_good, 
+       main = "Private Maintenance vs Public Infrastructure Quality ",
+       direction = c("v", "h"),
+       highlighting_fill=walls_color) 
+```
+
+The conclusion in Graph 4 was expected, but let's look at the neighborhoods that we found in Graph 2:
+
+Even in neighborhoods located directly adjacent (≤500 m) to Lima’s wealthiest areas, public infrastructure quality remains surprisingly uneven.
+
+The  shows that:
+
+The majority of adjacent areas still fall under poor-to-good (0–3) infrastructure quality, not “excellent.”
+Despite being physically right next to high-SES zones, most polygons do not receive the same level of public investment.
+This suggests that administrative boundaries take precedence over geographic proximity in determining infrastructure allocation.
+
+## Section 2: Analysis of Basic Services - Water
+
+Do poor households in mixed districts get WORSE water service than those in homogeneous poor districts because wealthy neighbors consume system capacity?
+
+To answer this, we start creating additional relevant variables to create plots: water access tier, cost efficiency (cost per hour), chlorine status, uses storage (coping behavior) and NSE diversity index (at district level)
+
+```{r}
+# Water Access Tier
+
+df_analysis <- df_data |>
+  mutate(
+    water_access_tier = case_when(
+      water_hours_per_day == 24 ~ "Full-24hr",
+      water_hours_per_day >= 12 & water_hours_per_day < 24 ~ "Limited-12-23hr",
+      water_hours_per_day > 0 & water_hours_per_day < 12 ~ "Severe-under-12hr",
+      TRUE ~ "No-data"
+    )
+  )
+```
+
+```{r}
+# Cost efficiency (cost per hour)
+
+df_analysis <- df_analysis |>
+  mutate(
+    cost_per_hour = water_paid_household / 
+    ifelse(water_hours_per_day == 0, NA, water_hours_per_day)
+  )
+```
+
+```{r}
+# Chlorine status
+
+df_analysis <- df_analysis |>
+  mutate(
+    chlorine_status = case_when(
+      water_chlorine_level_raw == 9.9 ~ "Not-tested",
+      water_chlorine_level_raw < 0.2 ~ "Contaminated",
+      water_chlorine_level_raw >= 0.2 & water_chlorine_level_raw <= 1.5 ~ "Safe",
+      water_chlorine_level_raw > 1.5 ~ "Over-chlorinated",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+```{r}
+# Uses storage (coping behavior)
+
+storage_items <- c(
+  "tanque (sin filtro)",
+  "tanque (con filtro)",
+  "balde o batea de plastico",
+  "cilindro de metal",
+  "bidon, botella, etc."
+)
+
+df_analysis <- df_analysis |>
+  mutate(
+    uses_storage = water_sample_extracted_from %in% storage_items
+  )
+```
+
+```{r}
+# NSE diversity index (at district level)
+# diversity = 1 - (pAB² + pC² + pDE²)
+
+district_ses <- df_analysis |>
+  group_by(geographic_code, dist_code, district) |>
+  summarize(
+    pct_AB = mean(level_a_b, na.rm = TRUE),
+    pct_C = mean(level_c, na.rm = TRUE),
+    pct_DE = mean(level_d_e, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    diversity_index = 1 - (pct_AB^2 + pct_C^2 + pct_DE^2),
+    district_type = case_when(
+      diversity_index < 0.40 ~ "Homogeneous",
+      diversity_index >= 0.40 & diversity_index <= 0.60 ~ "Mixed",
+      diversity_index > 0.60 ~ "Highly Mixed",
+      TRUE ~ NA_character_
+    )
+  )
+
+df_analysis <- df_analysis |>
+  left_join(district_ses, 
+            by = c("geographic_code","dist_code","district"))
+
+df_analysis <- df_analysis |>
+  mutate(
+    district_type2 = case_when(
+      district_type == "Homogeneous" & pct_AB > 0.5 ~ "Homogeneous-Rich",
+      district_type == "Homogeneous" & pct_C > 0.5 ~ "Homogeneous-Poor",
+      TRUE ~ "Mixed"
+    )
+  )
+```
+
+### Graph 2.1: Water hours per day
+
+It will be used a ridgeline plot that will hep us to show the distribution of daily water hours across district types, allowing us to compare access patterns between homogeneous and mixed districts.
+
+```{r}
+ggplot(
+  df_analysis |> filter(!is.na(water_hours_per_day)),
+  aes(x = water_hours_per_day, y = district_type2, fill = district_type2)
+) +
+  geom_density_ridges(alpha = 0.7, color = "white") +
+  scale_x_continuous(breaks = seq(0, 24, 4), limits = c(0, 24)) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Distribution of Water Hours per Day by District Type",
+    x = "Water Hours per Day",
+    y = "District Type"
+  ) +
+  theme(legend.position = "none")
+```
+
+No major differences are observed in this plot.
+
+There is a very slight difference in districts that are composed of a mixed of at least two socioeconomic levels, where some limitations can be seen in certain cases. This effect is almost invisible in homogeneous rich districts, where access to water is consistently guaranteed
+
+### Graph 2.2: Cost efficiency of water access across district types
+
+It will be used boxplots that will allow us to visualize disparities in water access and costs across district types, and identify if socioeconomic mixing will affect or not household behavior and expenditure.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 6
+
+df_plot <- df_analysis |>
+  filter(
+    !is.na(water_access_tier),
+    !is.na(cost_per_hour),
+    cost_per_hour < Inf
+  )
+
+df_plot <- df_plot |>
+  mutate(
+    district_type = factor(
+      district_type,
+      levels = c("Homogeneous", "Mixed", "Highly Mixed")
+  )
+)
+
+ggplot(df_plot, aes(
+  x = water_access_tier,
+  y = cost_per_hour,
+  fill = district_type
+)) +
+  geom_boxplot(
+    alpha = 0.7,
+    outlier.shape = NA,
+    position = position_dodge(width = 0.8)
+  ) +
+  geom_jitter(
+    aes(color = district_type),
+    alpha = 0.35,
+    shape = 16,
+    size = 1.2,
+    position = position_jitterdodge(
+      jitter.width = 0.15,
+      dodge.width = 0.8
+    )
+  ) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "S/ ")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Cost Efficiency of Water Access by Tier and District Type",
+    subtitle = "Higher values = paying more money for each hour of water received",
+    x = "Water Access Tier",
+    y = "Cost per Hour (S/.)",
+    fill = "District Type",
+    color = "District Type"
+  ) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 15, hjust = 1)
+  )
+```
+
+With these boxplots, we can see that there is greater variability in cost per hour in highly mixed districts. This observation suggests that in districts with both low and high income households, water availability for poorer households can be affected, likely because water is guaranteed for wealthier residents. As a result,households with lower income may face limited access and, at the same time, pay more per hour simply due to being surrounded by households with higher income.
+
+### Graph 2.3: Impact of district socioeconomic mixing on 24-hour water access
+
+It will be used a scatter plot that will show the relationship between district mixing (based on the index calculation) and the proportion of households with 24-hour water access.
+
+```{r}
+df_district <- df_analysis |>
+  group_by(geographic_code, district, diversity_index) |>
+  summarize(
+    pct_water_24h = mean(water_hours_per_day == 24, na.rm = TRUE),
+    ses_predominant = names(which.max(table(ses_final))),
+    pct_ab = mean(ses_final == "a_b", na.rm = TRUE),
+    pct_c = mean(ses_final == "c", na.rm = TRUE),
+    pct_de = mean(ses_final == "d_e", na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(
+    !is.na(diversity_index),
+    !is.na(pct_water_24h),
+    !is.na(ses_predominant)
+  ) |>
+  mutate(
+    ses_predominant = factor(ses_predominant, levels = c("a_b", "c", "d_e"))
+  )
+
+ggplot(df_district, aes(
+  x = diversity_index,
+  y = pct_water_24h,
+  color = ses_predominant
+)) +
+  geom_point(alpha = 0.7, size = 3) +
+  geom_smooth(method = "loess", se = TRUE, color = "black") +
+  scale_color_brewer(palette = "Set1", name = "Predominant SES") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal(base_size = 12) +
+  labs(
+    title = "District Mixing vs. 24hr Water Access",
+    subtitle = "Colored by predominant socioeconomic category in district",
+    x = "Diversity Index (District Mixing)",
+    y = "% Households with 24hr Water"
+  )
+```
+
+With these plot, we can observe that those districts were the higher levels are present (SES A and B) basically have guaranteed 24hr water access, in comparison with districts were the predominant SES is C, for example. In this last case, there is more dispersion of the percentage of household coverage with full water access, even we can see extreme low values. These facts demonstrate how some districts face challenges with water supply while others do not.
+
+### Graph 2.4: Household coping mechanisms by water access tier and district type
+
+This plot will illustrate how households adopt storage strategies depending on their water access tier and district type.
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4
+
+df_plot <- df_analysis |>
+  filter(
+    !is.na(water_access_tier),
+    !is.na(uses_storage),
+    !is.na(district_type),
+    water_access_tier != "No-data"
+  )
+
+df_plot <- df_plot |>
+  mutate(
+    district_type = factor(
+      district_type,
+      levels = c("Homogeneous", "Mixed", "Highly Mixed")
+    ),
+    water_access_tier = factor(
+      water_access_tier,
+      levels = c("Full-24hr", "Limited-12-23hr", "Severe-under-12hr")
+  )
+)
+
+df_plot <- df_plot |>
+  mutate(
+    uses_storage = factor(uses_storage, levels = c(TRUE, FALSE))
+  )
+
+ggplot(df_plot, aes(
+  x = water_access_tier,
+  fill = uses_storage
+)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ district_type) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_fill_manual(values = c("TRUE" = "#E41A1C", "FALSE" = "#377EB8"),
+                    labels = c("Yes", "No")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Coping Mechanisms by Water Access Tier and District Type",
+    x = "Water Access Tier",
+    y = "% Households",
+    fill = "Uses Storage"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+It can be observed that in homogeneous districts, referring to those surrounded by wealthier households, there is little or no need to use storage. 
+
+However, in highly mixed districts, the use of storage becomes more noticeable. Even in households with severe water restrictions (under 12 hours per day), the adoption of storage and water-saving practices increases significantly.
+
+In summary, we can observe that low-income households neighboring wealthier households, experience impacts both on 24-hour water access (possibly due to prioritization of other residents) and higher costs to pay. Similarly, these households also show a greater need to store water to cope with uncertain or irregular supply situations.
+
+## Section 3: The Neighborhood Tax
+
+Do poor households living in or near wealthy districts pay a 'proximity premium' - higher costs for equivalent housing and services?
+
+```{r}
+# housing cost variables
+list_hv <- c("monthly_rent_purchase_amount", "estimated_monthly_rent", "deflated_monthly_rent_purchase")
+
+df_hv <- df_analysis |>
+  select(all_of(list_hv)) |>
+  mutate(across(everything(), ~ as.numeric(.))) |>
+  mutate(across(everything(), ~ ifelse(. == 99999, NA, .))) |>
+  mutate(across(everything(), ~ ifelse(. == 999999, NA, .)))
+
+df_analysis$housing_cost <- rowMeans(df_hv[list_hv], na.rm = TRUE)
+
+# DERIVED: Rent per room (cost efficiency)
+df_analysis$rent_per_room <- df_analysis$monthly_rent_purchase_amount / df_analysis$total_rooms
+
+# DERIVED: Cost per room in a house (cost efficiency)
+df_analysis$rent_per_room_total <- df_analysis$housing_cost / df_analysis$total_rooms
+```
+
+```{r}
+# housing quality controls
+
+list_hq <- c("total_rooms", "bedrooms", "exterior_wall_material", "floor_material", "roof_material", "dwelling_type", "exterior_walls_plastered","exterior_walls_painted")
+
+# DERIVED: Housing quality index
+df_analysis <- df_analysis |>
+  mutate(
+    housing_quality_score = (
+      (exterior_wall_material == "ladrillo o bloque de cemento") * 3 +
+      (floor_material %in% c("losetas, terrazos o similares", 
+                                   "parquet o madera pulida")) * 3 +
+      (roof_material == "concreto armado") * 2 +
+      (exterior_walls_painted == "totalmente") * 1 +
+      (exterior_walls_plastered == "total") * 1
+    ) / 10  # Normalized 0-1
+  )
+```
+
+```{r}
+### location ameninities
+# variable: electricity_service_type
+# infrastructure_score (from Q1)
+#water_access_tier (from Q2)
+
+# DERIVED: Amenity score
+df_analysis <- df_analysis |>
+  mutate(
+    amenity_score = (
+      (water_source == "red publica, dentro de la vivienda") +
+      (water_access_tier == "Full 24-hr") +
+      (electricity_service_type == "con medidor de uso exclusivo para la vivienda") +
+      (infrastructure_score > 0.66)  # Good streets
+    ) / 4
+  )
+```
+
+
+```{r}
+# SERVICE EXPENDITURES
+#- paid_by_member_water (per household)
+#- paid_by_member_electricity
+#- paid_by_member_internet
+#- total_monthly_expense_paid
+
+# DERIVED: Utility burden percentage
+df_analysis <- df_analysis |>
+  mutate(
+    utility_burden_pct = (
+      water_paid_household + 
+      electricity_paid_household + 
+      internet_paid_household
+    ) / total_utilities_paid_household * 100
+  )
+
+# Context variables
+# District NSE + diversity index
+# dwelling_tenure
+# Household NSE class (external data)
+```
+
+We created 3 key cost variables to see if poor households pay more per room when living near wealthy areas.housing_cost: Average of all rent/purchase amounts, rent_per_room: How much each room costs monthly and rent_per_room_total: Total housing cost divided by rooms
+
+### Graph 3.1: Scatter plot matrix of renting 
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+renters_df <- df_analysis |>
+  filter(dwelling_tenure == "alquilada")
+
+#housing_quality_score × rent_per_room, colored by district_type
+p1 <- ggplot(renters_df, aes(x = housing_quality_score, y = rent_per_room_total, color = district_type)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.7) +
+  labs(
+    title = "A) Housing Quality vs Rent per Room",
+    x = "Housing Quality Score (0-1)",
+    y = "Rent per Room"
+  ) +
+  scale_y_continuous(labels = label_number(preffix = " s/.")) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0, face = "bold", size = 11),
+    axis.title = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(nrow = 1))
+
+
+# amenity_score × rent_per_room, colored by district_type
+p2 <- ggplot(renters_df, aes(x = amenity_score, y = rent_per_room_total, color = district_type)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.7) +
+  labs(
+    title = "B) Amenity Score vs Rent per Room",
+    x = "Amenity Score (0-1)",
+    y = ""
+  ) +
+  scale_y_continuous(labels = label_number(suffix = " Bs")) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0, face = "bold", size = 11),
+    axis.title = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(nrow = 1))
+
+# Bottom-left: diversity_index × rent_per_room, colored by household_NSE
+p3 <- ggplot(renters_df, aes(x = diversity_index, y = rent_per_room_total, color = ses_final)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.7) +
+  labs(
+    title = "C) Diversity Index vs Rent per Room",
+    x = "Diversity Index",
+    y = "Rent per Room"
+  ) +
+  scale_y_continuous(labels = label_number(suffix = " Bs")) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0, face = "bold", size = 11),
+    axis.title = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(nrow = 1))
+
+# Bottom-right: infrastructure_score × rent_per_room, colored by household_NSE
+p4 <- ggplot(renters_df, aes(x = infrastructure_score, y = rent_per_room_total, color = ses_final)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linetype = "dashed", size = 0.7) +
+  labs(
+    title = "D) Infrastructure Score vs Rent per Room",
+    x = "Infrastructure Score",
+    y = ""
+  ) +
+  scale_y_continuous(labels = label_number(suffix = " Bs")) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    plot.title = element_text(hjust = 0, face = "bold", size = 11),
+    axis.title = element_text(size = 9)
+  ) +
+  guides(color = guide_legend(nrow = 1))
+
+
+y_max <- max(renters_df$rent_per_room_total, na.rm = TRUE)
+y_min <- min(renters_df$rent_per_room_total, na.rm = TRUE)
+
+
+p1 <- p1 + scale_y_continuous(
+  limits = c(y_min, y_max),
+  labels = label_number(prefix = "s/. ")
+)
+
+p2 <- p2 + scale_y_continuous(
+  limits = c(y_min, y_max),
+  labels = label_number(prefix = "s/. ")
+)
+
+p3 <- p3 + scale_y_continuous(
+  limits = c(y_min, y_max),
+  labels = label_number(prefix = "s/. ")
+)
+
+p4 <- p4 + scale_y_continuous(
+  limits = c(y_min, y_max),
+  labels = label_number(prefix = "s/. ")
+)
+
+combined_plot <- (p1 + p2) / (p3 + p4) +
+  plot_annotation(
+    title = "THE NEIGHBORHOOD TAX: What Drives Rental Prices in Lima?",
+    subtitle = "Scatter plot matrix examining rent per room across different neighborhood characteristics",
+    theme = theme(
+      plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray40"),
+      plot.caption = element_text(size = 9, hjust = 0.5, color = "gray50")
+    )
+  )
+
+combined_plot
+```
+
+Rental prices in Lima rise sharply with neighborhood quality, far more than with housing quality, confirming that households pay a strong “neighborhood tax” for access to better infrastructure, amenities, and social environments.
+
+### Graph 3.2: District-Level Rent Differences by Socioeconomic Status
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+nse_renters <- df_analysis |>
+  filter(
+    dwelling_tenure == "alquilada",
+    ses_final %in% c("c", "a_b")  # 
+  )
+
+
+district_rent <- nse_renters |>
+  group_by(district, ses_final) |>
+  summarise(
+    median_rent = median(rent_per_room_total, na.rm = TRUE),
+    n_households = n(),
+    .groups = 'drop'
+  ) |>
+  filter(n_households >= 5)
+
+district_diversity <- nse_renters |>
+  distinct(district, diversity_index) |>
+  arrange(diversity_index) |>
+  mutate(district_rank = row_number())
+
+graph2_data <- district_rent |>
+  left_join(district_diversity, by = "district") |>
+  arrange(district_rank) |>
+
+  mutate(district = factor(district, levels = unique(district)))
+
+# Create Cleveland dot plot
+graph2 <- ggplot(graph2_data, aes(x = median_rent, y = reorder(district, district_rank))) +
+  geom_point(aes(color = ses_final, shape = ses_final), size = 3) +
+  geom_line(aes(group = district), color = "gray70", linetype = "dashed", size = 0.5) +
+  labs(
+    title = " District-Level Rent Differences by Socioeconomic Status",
+    subtitle = "Districts ranked by diversity index | Comparison of SES-a_b vs SES-c renters",
+    x = "Median Rent per Room (Bs)",
+    y = "District (ranked by diversity index)",
+    color = "SES",
+    shape = "SES"
+  ) +
+  scale_x_continuous(labels = label_number(suffix = " s/.")) +
+  scale_color_manual(values = c("a_b" = "#377EB8", "c" = "#E41A1C")) +
+  scale_shape_manual(values = c("a_b" = 16, "c" = 17)) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 12, face = "bold", hjust = 0),
+    plot.subtitle = element_text(size = 10, hjust = 0),
+    axis.text.y = element_text(size = 8),
+    panel.grid.major.y = element_line(color = "gray90", size = 0.3)
+  )
+graph2
+```
+
+We can see that class C districts typically have rental costs below 200 per room, as do most in levels A and B. However, there is an interesting insight: Surquillo, a class C district, has a cost of approximately 400. Surquillo borders San Borja and Miraflores, which are privileged areas. This suggests that Surquillo's proximity to these districts has raised its rent per room compared to other class C areas.We observe a related insight in San Borja, a privileged area. Because it borders Surquillo, San Borja has the lowest rent per room among the level A and B neighborhoods.
+
+The attached map, focused specifically on the districts of San Borja, Miraflores, and Surquillo, demonstrates this spatial relationship.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+focused_districts <- c("SAN BORJA", "MIRAFLORES", "SURQUILLO")
+
+
+focused_data <- df_analysis |>
+  filter(district %in% focused_districts) |>
+ 
+  group_by(district) |>
+  mutate(
+    district_avg_rent = mean(rent_per_room_total, na.rm = TRUE),
+    district_type = ifelse(district %in% c("SAN BORJA", "MIRAFLORES"), 
+                          "Privileged (a_b)", "Non-privileged (c)")
+  ) |>
+  ungroup()
+
+df_data_sf_2 <- st_as_sf(focused_data, wkt = "geometry")
+
+
+centroids <- df_data_sf_2 |>
+  group_by(district, district_type, district_avg_rent) |>
+  summarise(geometry = st_centroid(st_union(geometry))) |>
+  ungroup()
+
+
+ggplot(df_data_sf_2) +
+
+  geom_sf(
+    aes(fill = ses_final), 
+    color = "grey40",
+    size = 0.3,
+    alpha = 0.8
+  ) +
+  
+  # 2. District borders
+  geom_sf(
+    fill = NA,
+    color = "grey",
+    size = 0.5
+  ) +
+  
+  geom_sf_text(
+    data = centroids,
+    aes(label = paste0(district, "\nS/.", round(district_avg_rent, 0))),
+    size = 3,
+    fontface = "bold",
+    color = "gray30"
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "a_b" = "#9B59B6",   
+      "c" = "yellow"       
+    ),
+    name = "NSE Class",
+    labels = c("a_b" = "Privileged", "c" = "Non-privileged")
+  ) +
+  
+  labs(
+    title = "The Proximity Premium: Evidence from 3 Districts",
+    subtitle = "Surquillo (c) shows higher rents due to adjacency to privileged districts",
+    caption = "Colors: Purple = Privileged (a_b), Yellow = Non-privileged (c)\nLabels show average rent per room in soles"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray40"),
+    plot.caption = element_text(size = 9, hjust = 0.5, color = "gray50"),
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank()
+  )
+```
+
+### Graph 3.3: Utility Burden by District Type and Household NSE
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+poor_renters <- df_analysis |>
+  filter(
+    dwelling_tenure == "alquilada",
+    ses_final %in% c("a_b", "c") 
+  ) |>
+  filter(!is.na(utility_burden_pct), !is.na(district_type))
+
+graph3 <- ggplot(poor_renters, aes(x = district_type, y = utility_burden_pct, fill = ses_final)) +
+  geom_boxplot(alpha = 0.7, outlier.size = 1, position = position_dodge(width = 0.75)) +
+  stat_summary(
+    fun = median,
+    geom = "point",
+    shape = 18,
+    size = 3,
+    color = "white",
+    position = position_dodge(width = 0.75)
+  ) +
+  labs(
+    title = "Utility Burden by District Type and Household NSE",
+    subtitle = "Comparison of utility expenditure as percentage of total expenses (NSE-a_b vs NSE-c)",
+    x = "District Type",
+    y = "Utility Burden (%)",
+    fill = "Household NSE"
+  ) +
+  scale_y_continuous(
+    labels = label_percent(scale = 1), 
+    limits = c(0, NA),
+    expand = expansion(mult = c(0, 0.1))
+  ) +
+  scale_fill_manual(
+    values = c("a_b" = "#377EB8", "c" = "#E41A1C"),
+    labels = c("a_b" = "Higher SES (a_b)", "c" = "Lower SES (c)")
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(size = 12, face = "bold", hjust = 0),
+    plot.subtitle = element_text(size = 10, hjust = 0),
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    panel.grid.major.x = element_blank(),
+    legend.title = element_text(face = "bold")
+  ) 
+
+print(graph3)
+```
+
+Utility expenses are regressive in Lima: poorer households devote a larger share of their budget to basic services, and district composition matters—with homogeneous neighborhoods showing the highest burdens and mixed ones offering more financial relief.
+

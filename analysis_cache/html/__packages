@@ -1,0 +1,11 @@
+sf
+ggplot2
+viridisLite
+viridis
+classInt
+RColorBrewer
+dplyr
+stringr
+scales
+openxlsx
+ggridges

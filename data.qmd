@@ -1,5 +1,36 @@
 # Data
 
-## Description
+## Technical description
+The primary data source for this project is the INEI, Peru's official statistics agency. INEI collects a wide array of data, including population statistics and sample surveys. These datasets are typically available in formats like Excel and are updated periodically, with some reports published quarterly or annually. For instance, the Encuesta Nacional de Hogares (ENAHO) provides detailed information on household living conditions, income, expenses, and employment. 
+
+Data collection: 
+We will need to process the data to create a master table from the url 
+https://proyectos.inei.gob.pe/microdatos/. 
+
+Data collection for our especific anlaysis is conducted at the household level using a sample survey approach. The survey is carried out quarterly due to the complexity and budget requirements that a full census of the entire population would entail. This sample-based approach ensures statistically representative data across Peru’s official geographic divisions.
+
+Period: 
+Second quarter of 2025 (most updated information)
+
+Note: 
+The column labels and the page are in Spanish. We will translate the columns. 
+
+The ENAHO survey gathers the following information: 
+
+- Housing and household characteristics
+- Individual and demographic characteristics
+- Education
+- Health
+- Food and beverage expenditures
+- Social programs (by household members)
+- Governance, democracy, and transparency 
+
+The data is collected at the household level, which can be aggregated by block, zone, district, province, department, and country, reflecting the official geographic divisions of Peru.
+
+SES levels:
+In addition to ENAHO, a supplementary dataset classifying Lima metropolitan districts by socioeconomic level (A, B, C, D, E) has been incorporated. This dataset shows the composition of each district across these five SES levels and has been used to cross-reference districts with other variables in our analysis.
+
+https://apeim.com.pe/wp-content/uploads/2024/01/APEIM-Informe-de-Niveles-Socioeconomicos-2023-2024-Version-WEB.pdf
+
 
 ## Missing value analysis
